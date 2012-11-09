@@ -3,29 +3,83 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
-	"strings"
 )
 
-type jsonHandler func(http.ResponseWriter, *http.Request, *json.Decoder)
+type InputOutputTest string
 
-func (h jsonHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.Header.Get("Content-Type") != "application/json" {
-		log.Printf("Content-Type is %s", r.Header.Get("Content-Type"))
-		http.Error(w, "Request must be in JSON format; must include Content-Type: appluication/json in request", http.StatusBadRequest)
-		return
-	}
-	if !strings.Contains(r.Header.Get("Accept"), "application/json") {
-		log.Printf("Accept is %s", r.Header.Get("Accept"))
-		http.Error(w, "Client does not accept JSON response; must include Accept: application/json in request", http.StatusBadRequest)
-		return
-	}
-	
-	decoder := json.NewDecoder(r.Body)
-	defer r.Body.Close()
+func (elt InputOutputTest) Validate() error {
+	return nil
+}
 
-	h(w, r, decoder)
+type TestResult struct {
+	Killed     bool
+	ExitStatus int
+	Message    string
+	Stdout     string
+	Return     string
+	Stderr     string
+}
+
+type InputOutputTestResult struct {
+	Success bool
+
+	CPUSeconds   float64
+	TotalSeconds float64
+	MB           float64
+
+	Reference *TestResult
+	Candidate *TestResult
+}
+
+type Request struct {
+	MaxCPUSeconds   float64
+	MaxTotalSeconds float64
+	MaxMB           float64
+
+	Reference string
+	Candidate string
+
+	Tests []*InputOutputTest
+}
+
+func (elt *Request) Validate() error {
+	if elt.MaxCPUSeconds < 0.1 {
+		return fmt.Errorf("MaxCPUSeconds must be >= 0.1")
+	} else if elt.MaxCPUSeconds > 60.0 {
+		return fmt.Errorf("MaxCPUSeconds must be <= 60.0")
+	}
+
+	if elt.MaxTotalSeconds < 0.1 {
+		return fmt.Errorf("MaxTotalSeconds must be >= 0.1")
+	} else if elt.MaxTotalSeconds > 60.0 {
+		return fmt.Errorf("MaxTotalSeconds must be <= 60.0")
+	}
+
+	if elt.MaxMB < 1.0 {
+		return fmt.Errorf("MaxMB must be >= 1.0")
+	} else if elt.MaxMB > 1024.0 {
+		return fmt.Errorf("MaxMB must be <= 1024.0")
+	}
+
+	if elt.Reference == "" {
+		return fmt.Errorf("Reference solution is required")
+	}
+	if elt.Candidate == "" {
+		return fmt.Errorf("Candidate field is required")
+	}
+
+	if len(elt.Tests) == 0 {
+		return fmt.Errorf("Tests list must not be empty")
+	}
+
+	for i, test := range elt.Tests {
+		if err := test.Validate(); err != nil {
+			return fmt.Errorf("Error validating test %d: %v", i, err)
+		}
+	}
+
+	return nil
 }
 
 func grade_python27_inputoutput(w http.ResponseWriter, r *http.Request, decoder *json.Decoder) {
@@ -34,7 +88,35 @@ func grade_python27_inputoutput(w http.ResponseWriter, r *http.Request, decoder 
 		http.Error(w, fmt.Sprintf("Error decoding input: %v", err), http.StatusBadRequest)
 		return
 	}
+	if err := in.Validate(); err != nil {
+		http.Error(w, fmt.Sprintf("Error validating input: %v", err), http.StatusBadRequest)
+		return
+	}
 
-	result := new(InputOutputTestResult)
+	result := &InputOutputTestResult{
+		Success: true,
+
+		CPUSeconds:   0.73,
+		TotalSeconds: 0.74,
+		MB:           8.125,
+
+		Reference: &TestResult{
+			Killed:     false,
+			ExitStatus: 0,
+			Message:    "",
+			Stdout:     "Hello, world\n",
+			Return:     "",
+			Stderr:     "",
+		},
+
+		Candidate: &TestResult{
+			Killed:     false,
+			ExitStatus: 0,
+			Message:    "",
+			Stdout:     "Hello, world\n",
+			Return:     "",
+			Stderr:     "",
+		},
+	}
 	writeJson(w, r, result)
 }
