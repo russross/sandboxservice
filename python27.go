@@ -117,7 +117,7 @@ func (req *Request) RunTest(test InputOutputTest, ref *TestResult) (*InputOutput
 	if ref == nil {
 		source = req.Reference
 	}
-	if err := ioutil.WriteFile(filepath.Join(dirname, "source.py"), []byte(source), 0644); err != nil {
+	if err := ioutil.WriteFile(filepath.Join(dirname, "source.py"), []byte(source+"\n"), 0644); err != nil {
 		return nil, fmt.Errorf("Failed to create source.py file: %v", err)
 	}
 
