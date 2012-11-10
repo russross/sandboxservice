@@ -1,1 +1,4 @@
-gradeservice
+sandboxservice
+bin
+tmp
+*.swp
