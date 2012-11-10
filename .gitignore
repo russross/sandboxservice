@@ -1,4 +1,4 @@
 sandboxservice
-bin
+python2.7-static
 tmp
 *.swp
