@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
@@ -123,7 +124,6 @@ func (req *Request) RunTest(test InputOutputTest, ref *TestResult) (*InputOutput
 	cmd := exec.Command(sandboxpath,
 		"-m", strconv.Itoa(req.MaxMB),
 		"-c", strconv.Itoa(req.MaxCPUSeconds),
-		"-t", strconv.Itoa(req.MaxTotalSeconds),
 		"--",
 		python27path, "source.py",
 	)
@@ -132,7 +132,27 @@ func (req *Request) RunTest(test InputOutputTest, ref *TestResult) (*InputOutput
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 
-	err = cmd.Run()
+	err = cmd.Start()
+
+	if err == nil {
+		// the race is on--watch for the timeout and the process completing on its own
+		timer := time.After(time.Duration(req.MaxTotalSeconds) * time.Second)
+		terminate := make(chan bool)
+		go func() {
+			cmd.Wait()
+			terminate <- true
+		}()
+
+	waitloop:
+		for {
+			select {
+			case <-timer:
+				cmd.Process.Kill()
+			case <-terminate:
+				break waitloop
+			}
+		}
+	}
 
 	failed := err != nil || !cmd.ProcessState.Success()
 	testres := &TestResult{
