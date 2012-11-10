@@ -41,8 +41,9 @@ type jsonHandler func(http.ResponseWriter, *http.Request, *json.Decoder)
 
 func (h jsonHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
-		log.Printf("method is %d", r.Method)
+		log.Printf("method is %s", r.Method)
 		http.Error(w, "Not found", http.StatusNotFound)
+		return
 	}
 	if r.Header.Get("Content-Type") != "application/json" {
 		log.Printf("Content-Type is %s", r.Header.Get("Content-Type"))
