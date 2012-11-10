@@ -18,6 +18,7 @@ const (
 
 func main() {
 	http.Handle("/grade/python27/inputoutput", jsonHandler(grade_python27_inputoutput))
+	http.Handle("/grade/python27/expression", jsonHandler(grade_python27_expression))
 
 	log.Printf("Listening on %s", Port)
 	err := http.ListenAndServe(Port, nil)

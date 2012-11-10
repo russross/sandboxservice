@@ -31,12 +31,6 @@ func init() {
 	sandboxpath = filepath.Join(wd, sandboxname)
 }
 
-type InputOutputTest string
-
-func (elt InputOutputTest) Validate() error {
-	return nil
-}
-
 type TestResult struct {
 	Error   bool
 	Message string
@@ -44,7 +38,7 @@ type TestResult struct {
 	Stderr  string
 }
 
-type InputOutputTestResult struct {
+type TestResultPair struct {
 	Success   bool
 	Reference *TestResult
 	Candidate *TestResult
@@ -58,7 +52,7 @@ type Request struct {
 	Reference string
 	Candidate string
 
-	Tests []InputOutputTest
+	Tests []string
 }
 
 func (elt *Request) Validate() error {
@@ -83,24 +77,24 @@ func (elt *Request) Validate() error {
 	if elt.Reference == "" {
 		return fmt.Errorf("Reference solution is required")
 	}
+	if !strings.HasSuffix(elt.Reference, "\n") {
+		elt.Reference = elt.Reference + "\n"
+	}
 	if elt.Candidate == "" {
 		return fmt.Errorf("Candidate field is required")
+	}
+	if !strings.HasSuffix(elt.Candidate, "\n") {
+		elt.Candidate = elt.Candidate + "\n"
 	}
 
 	if len(elt.Tests) == 0 {
 		return fmt.Errorf("Tests list must not be empty")
 	}
 
-	for i, test := range elt.Tests {
-		if err := test.Validate(); err != nil {
-			return fmt.Errorf("Error validating test %d: %v", i, err)
-		}
-	}
-
 	return nil
 }
 
-func (req *Request) RunTest(test InputOutputTest, ref *TestResult) (*InputOutputTestResult, error) {
+func (req *Request) RunTest(input, source string) (*TestResult, error) {
 	// create a sandbox directory
 	dirname, err := ioutil.TempDir("", "sandbox")
 	if err != nil {
@@ -109,14 +103,10 @@ func (req *Request) RunTest(test InputOutputTest, ref *TestResult) (*InputOutput
 	defer os.RemoveAll(dirname)
 
 	// set up the environment files
-	stdin := strings.NewReader(string(test))
+	stdin := strings.NewReader(input)
 	stdout := new(bytes.Buffer)
 	stderr := new(bytes.Buffer)
-	source := req.Candidate
-	if ref == nil {
-		source = req.Reference
-	}
-	if err := ioutil.WriteFile(filepath.Join(dirname, "source.py"), []byte(source+"\n"), 0644); err != nil {
+	if err := ioutil.WriteFile(filepath.Join(dirname, "source.py"), []byte(source), 0644); err != nil {
 		return nil, fmt.Errorf("Failed to create source.py file: %v", err)
 	}
 
@@ -154,23 +144,11 @@ func (req *Request) RunTest(test InputOutputTest, ref *TestResult) (*InputOutput
 		}
 	}
 
-	failed := err != nil || !cmd.ProcessState.Success()
-	testres := &TestResult{
-		Error:   failed,
+	result := &TestResult{
+		Error:   err != nil || !cmd.ProcessState.Success(),
 		Message: cmd.ProcessState.String(),
 		Stdout:  stdout.String(),
 		Stderr:  stderr.String(),
-	}
-
-	result := &InputOutputTestResult{
-		Success:   !failed,
-		Reference: ref,
-		Candidate: testres,
-	}
-
-	if ref == nil {
-		result.Reference = testres
-		result.Candidate = nil
 	}
 
 	return result, nil
@@ -187,22 +165,74 @@ func grade_python27_inputoutput(w http.ResponseWriter, r *http.Request, decoder 
 		return
 	}
 
-	results := []*InputOutputTestResult{}
+	results := []*TestResultPair{}
 
 	for n, test := range in.Tests {
-		// run it once with the reference solution
-		ref, err := in.RunTest(test, nil)
+		// run it with the reference solution
+		ref, err := in.RunTest(test, in.Reference)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Error running reference solution %d: %v", n, err), http.StatusInternalServerError)
 			return
 		}
-		cand, err := in.RunTest(test, ref.Reference)
+
+		// run it with the candidate solution
+		cand, err := in.RunTest(test, in.Candidate)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Error running candidate solution %d: %v", n, err), http.StatusInternalServerError)
 			return
 		}
-		cand.Success = ref.Success && cand.Success && cand.Candidate.Stdout == cand.Reference.Stdout
-		results = append(results, cand)
+
+		elt := &TestResultPair{
+			Success:   !ref.Error && !cand.Error && ref.Stdout == cand.Stdout,
+			Reference: ref,
+			Candidate: cand,
+		}
+		results = append(results, elt)
+	}
+
+	writeJson(w, r, results)
+}
+
+func grade_python27_expression(w http.ResponseWriter, r *http.Request, decoder *json.Decoder) {
+	in := new(Request)
+	if err := decoder.Decode(in); err != nil {
+		http.Error(w, fmt.Sprintf("Error decoding input: %v", err), http.StatusBadRequest)
+		return
+	}
+	if err := in.Validate(); err != nil {
+		http.Error(w, fmt.Sprintf("Error validating input: %v", err), http.StatusBadRequest)
+		return
+	}
+	for i, elt := range in.Tests {
+		if elt == "" {
+			http.Error(w, fmt.Sprintf("Error validating test %d: empty expression", i), http.StatusBadRequest)
+			return
+		}
+	}
+
+	results := []*TestResultPair{}
+
+	for n, test := range in.Tests {
+		// run it with the reference solution
+		ref, err := in.RunTest("", fmt.Sprintf("%sprint repr(%s)", in.Reference, test))
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Error running reference solution %d: %v", n, err), http.StatusInternalServerError)
+			return
+		}
+
+		// run it with the candidate solution
+		cand, err := in.RunTest("", fmt.Sprintf("%sprint repr(%s)", in.Candidate, test))
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Error running candidate solution %d: %v", n, err), http.StatusInternalServerError)
+			return
+		}
+
+		elt := &TestResultPair{
+			Success:   !ref.Error && !cand.Error && ref.Stdout == cand.Stdout,
+			Reference: ref,
+			Candidate: cand,
+		}
+		results = append(results, elt)
 	}
 
 	writeJson(w, r, results)
