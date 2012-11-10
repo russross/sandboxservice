@@ -9,13 +9,17 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
-	"time"
 )
 
-const python27name = "bin/python2.7-static"
+const (
+	python27name = "bin/python2.7-static"
+	sandboxname  = "bin/sandbox"
+)
 
 var python27path string
+var sandboxpath string
 
 func init() {
 	wd, err := os.Getwd()
@@ -23,6 +27,7 @@ func init() {
 		panic("Failed to find working directory: " + err.Error())
 	}
 	python27path = filepath.Join(wd, python27name)
+	sandboxpath = filepath.Join(wd, sandboxname)
 }
 
 type InputOutputTest string
@@ -32,29 +37,22 @@ func (elt InputOutputTest) Validate() error {
 }
 
 type TestResult struct {
-	Killed     bool
-	ExitStatus int
-	Message    string
-	Stdout     string
-	Return     string
-	Stderr     string
+	Error   bool
+	Message string
+	Stdout  string
+	Stderr  string
 }
 
 type InputOutputTestResult struct {
-	Success bool
-
-	CPUSeconds   float64
-	TotalSeconds float64
-	MB           float64
-
+	Success   bool
 	Reference *TestResult
 	Candidate *TestResult
 }
 
 type Request struct {
-	MaxCPUSeconds   float64
-	MaxTotalSeconds float64
-	MaxMB           float64
+	MaxCPUSeconds   int
+	MaxTotalSeconds int
+	MaxMB           int
 
 	Reference string
 	Candidate string
@@ -63,22 +61,22 @@ type Request struct {
 }
 
 func (elt *Request) Validate() error {
-	if elt.MaxCPUSeconds < 0.1 {
-		return fmt.Errorf("MaxCPUSeconds must be >= 0.1")
-	} else if elt.MaxCPUSeconds > 60.0 {
-		return fmt.Errorf("MaxCPUSeconds must be <= 60.0")
+	if elt.MaxCPUSeconds < 1 {
+		return fmt.Errorf("MaxCPUSeconds must be >= 1")
+	} else if elt.MaxCPUSeconds > 60 {
+		return fmt.Errorf("MaxCPUSeconds must be <= 60")
 	}
 
-	if elt.MaxTotalSeconds < 0.1 {
-		return fmt.Errorf("MaxTotalSeconds must be >= 0.1")
-	} else if elt.MaxTotalSeconds > 60.0 {
-		return fmt.Errorf("MaxTotalSeconds must be <= 60.0")
+	if elt.MaxTotalSeconds < 1 {
+		return fmt.Errorf("MaxTotalSeconds must be >= 1")
+	} else if elt.MaxTotalSeconds > 60 {
+		return fmt.Errorf("MaxTotalSeconds must be <= 60")
 	}
 
-	if elt.MaxMB < 1.0 {
-		return fmt.Errorf("MaxMB must be >= 1.0")
-	} else if elt.MaxMB > 1024.0 {
-		return fmt.Errorf("MaxMB must be <= 1024.0")
+	if elt.MaxMB < 1 {
+		return fmt.Errorf("MaxMB must be >= 1")
+	} else if elt.MaxMB > 256 {
+		return fmt.Errorf("MaxMB must be <= 256")
 	}
 
 	if elt.Reference == "" {
@@ -122,38 +120,30 @@ func (req *Request) RunTest(test InputOutputTest, ref *TestResult) (*InputOutput
 	}
 
 	// execute the test
-	start := time.Now()
-	cmd := exec.Command(python27path, "source.py")
+	cmd := exec.Command(sandboxpath,
+		"-m", strconv.Itoa(req.MaxMB),
+		"-c", strconv.Itoa(req.MaxCPUSeconds),
+		"-t", strconv.Itoa(req.MaxTotalSeconds),
+		"--",
+		python27path, "source.py",
+	)
 	cmd.Dir = dirname
 	cmd.Stdin = stdin
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 
 	err = cmd.Run()
-	finish := time.Now()
-	elapsed := finish.Sub(start).Seconds()
 
-	success := err == nil && cmd.ProcessState.Success()
-	exit := 0
-	if !success {
-		exit = -1
-	}
+	failed := err != nil || !cmd.ProcessState.Success()
 	testres := &TestResult{
-		Killed:     !success,
-		ExitStatus: exit,
-		Message:    cmd.ProcessState.String(),
-		Stdout:     stdout.String(),
-		Return:     "",
-		Stderr:     stderr.String(),
+		Error:   failed,
+		Message: cmd.ProcessState.String(),
+		Stdout:  stdout.String(),
+		Stderr:  stderr.String(),
 	}
 
 	result := &InputOutputTestResult{
-		Success: success,
-
-		CPUSeconds:   elapsed,
-		TotalSeconds: elapsed,
-		MB:           0.0,
-
+		Success:   !failed,
 		Reference: ref,
 		Candidate: testres,
 	}
