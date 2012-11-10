@@ -41,6 +41,7 @@ func fileExists(path string) (bool, error) {
 type jsonHandler func(http.ResponseWriter, *http.Request, *json.Decoder)
 
 func (h jsonHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	log.Printf("%s %s", r.Method, r.URL)
 	if r.Method != "POST" {
 		log.Printf("method is %s", r.Method)
 		http.Error(w, "Not found", http.StatusNotFound)

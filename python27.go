@@ -77,18 +77,23 @@ func (elt *Request) Validate() error {
 	if elt.Reference == "" {
 		return fmt.Errorf("Reference solution is required")
 	}
+	elt.Reference = strings.Replace(elt.Reference, "\r\n", "\n", -1)
 	if !strings.HasSuffix(elt.Reference, "\n") {
 		elt.Reference = elt.Reference + "\n"
 	}
 	if elt.Candidate == "" {
 		return fmt.Errorf("Candidate field is required")
 	}
+	elt.Candidate = strings.Replace(elt.Candidate, "\r\n", "\n", -1)
 	if !strings.HasSuffix(elt.Candidate, "\n") {
 		elt.Candidate = elt.Candidate + "\n"
 	}
 
 	if len(elt.Tests) == 0 {
 		return fmt.Errorf("Tests list must not be empty")
+	}
+	for i, test := range elt.Tests {
+		elt.Tests[i] = strings.Replace(test, "\r\n", "\n", -1)
 	}
 
 	return nil
