@@ -63,7 +63,7 @@ func (h jsonHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func writeJson(w http.ResponseWriter, r *http.Request, elt interface{}) {
-	raw, err := json.Marshal(elt)
+	raw, err := json.MarshalIndent(elt, "", "    ")
 	if err != nil {
 		log.Printf("Error encoding result as JSON: %v", err)
 		http.Error(w, "Failure encoding result as JSON", http.StatusInternalServerError)
