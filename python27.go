@@ -150,7 +150,7 @@ func (req *Request) RunTest(test InputOutputTest, ref *TestResult) (*InputOutput
 	result := &InputOutputTestResult{
 		Success: success,
 
-		CPUSeconds:   (cmd.ProcessState.SystemTime() + cmd.ProcessState.UserTime()).Seconds(),
+		CPUSeconds:   elapsed,
 		TotalSeconds: elapsed,
 		MB:           0.0,
 
