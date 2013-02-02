@@ -111,8 +111,11 @@ type Python27StdinRequest struct {
 	Tests      []string
 	MaxSeconds int
 	MaxMB      int
-	Report     string
-	Passed     bool
+}
+
+type Python27StdinResponse struct {
+	Report string
+	Passed bool
 }
 
 type TestResult struct {
@@ -177,10 +180,6 @@ func (elt *Python27StdinRequest) Validate() error {
 		return fmt.Errorf("MaxMB must be <= %d", MaxMB)
 	}
 
-	// clear report and passed fields
-	elt.Report = ""
-	elt.Passed = true
-
 	return nil
 }
 
@@ -203,7 +202,7 @@ func (req *Python27StdinRequest) RunTest(input, source string) (*TestResult, err
 	// execute the test
 	cmd := exec.Command(SandboxPath,
 		"-m", strconv.Itoa(req.MaxMB),
-		"-c", strconv.Itoa(req.MaxSeconds),
+		"-c", strconv.Itoa(req.MaxSeconds+1),
 		"--",
 		Python27Path, "student.py",
 	)
@@ -213,6 +212,7 @@ func (req *Python27StdinRequest) RunTest(input, source string) (*TestResult, err
 	cmd.Stderr = stderr
 
 	err = cmd.Start()
+	killed := false
 
 	if err == nil {
 		// the race is on--watch for the timeout and the process completing on its own
@@ -228,15 +228,25 @@ func (req *Python27StdinRequest) RunTest(input, source string) (*TestResult, err
 			select {
 			case <-timer:
 				cmd.Process.Kill()
+				killed = true
 			case <-terminate:
 				break waitloop
 			}
 		}
 	}
 
+	message := ""
+	if err != nil {
+		message = err.Error()
+	} else if killed {
+		message = "Process exceeded its time limit"
+	} else if !cmd.ProcessState.Success() {
+		message = cmd.ProcessState.String()
+	}
+
 	result := &TestResult{
 		Error:   err != nil || !cmd.ProcessState.Success(),
-		Message: cmd.ProcessState.String(),
+		Message: message,
 		Stdout:  stdout.String(),
 		Stderr:  stderr.String(),
 	}
@@ -253,6 +263,11 @@ func python27stdin_handler(w http.ResponseWriter, r *http.Request, decoder *json
 	if err := request.Validate(); err != nil {
 		http.Error(w, fmt.Sprintf("Error validating input: %v", err), http.StatusBadRequest)
 		return
+	}
+
+	response := &Python27StdinResponse{
+		Report: "",
+		Passed: true,
 	}
 
 	for n, test := range request.Tests {
@@ -274,26 +289,26 @@ func python27stdin_handler(w http.ResponseWriter, r *http.Request, decoder *json
 
 		// report the result
 		if n > 0 {
-			request.Report += "\n\n-=-=-=-=-=-=-=-=-\n\n"
+			response.Report += "\n-=-=-=-=-=-=-=-=-\n\n"
 		}
 
 		// record a pass or fail
 		if ref.Error || cand.Error || ref.Stdout != cand.Stdout {
-			request.Report += fmt.Sprintf("Test #%d: FAILED\n", n)
-			request.Passed = false
+			response.Report += fmt.Sprintf("Test #%d: FAILED\n", n+1)
+			response.Passed = false
 		} else {
-			request.Report += fmt.Sprintf("Test #%d: PASSED\n", n)
+			response.Report += fmt.Sprintf("Test #%d: PASSED\n", n+1)
 		}
 
 		// give a few details
 		if ref.Error {
-			request.Report += fmt.Sprintf("The reference solution ended in error: %s\n", ref.Message)
+			response.Report += fmt.Sprintf("The reference solution ended in error: %s\n", ref.Message)
 		}
 		if cand.Error {
-			request.Report += fmt.Sprintf("The candidate solution ended in error: %s\n", cand.Message)
+			response.Report += fmt.Sprintf("The candidate solution ended in error: %s\n", cand.Message)
 		}
-		if ref.Stdout != cand.Stdout {
-			request.Report += fmt.Sprintf("The output was incorrect.\n\n"+
+		if !ref.Error && !cand.Error && ref.Stdout != cand.Stdout {
+			response.Report += fmt.Sprintf("The output was incorrect.\n\n"+
 				"The correct output is:\n[[[[\n%s]]]]\n\n"+
 				"Your output was:\n[[[[\n%s]]]]\n",
 				ref.Stdout,
@@ -301,5 +316,5 @@ func python27stdin_handler(w http.ResponseWriter, r *http.Request, decoder *json
 		}
 	}
 
-	writeJson(w, r, request)
+	writeJson(w, r, response)
 }
