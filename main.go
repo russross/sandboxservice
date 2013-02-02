@@ -7,22 +7,66 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
 
+type ProblemType struct {
+	Name      string
+	Tag       string
+	FieldList []ProblemField
+}
+
+type ProblemField struct {
+	Name    string
+	Prompt  string
+	Title   string
+	Type    string
+	List    bool
+	Default string
+	Creator string
+	Student string
+	Grader  string
+	Result  string
+}
+
 const (
-	Port                 = ":8080"
+	DefaultAddress       = ":80"
 	CompressionThreshold = 1024
+	Python27Name         = "bin/python2.7-static"
+	SandboxName          = "bin/sandbox"
+	MaxMB                = 256
+	MaxSeconds           = 60
 )
 
-func main() {
-	http.Handle("/grade/python27/inputoutput", jsonHandler(grade_python27_inputoutput))
-	http.Handle("/grade/python27/expression", jsonHandler(grade_python27_expression))
+var Python27Path string
+var SandboxPath string
 
-	log.Printf("Listening on %s", Port)
-	err := http.ListenAndServe(Port, nil)
+func main() {
+	if len(os.Args) > 2 {
+		log.Fatalf("Usage: %s [[address]:port]", os.Args[0])
+	}
+	address := DefaultAddress
+	if len(os.Args) == 2 {
+		address = os.Args[1]
+	}
+
+	wd, err := os.Getwd()
 	if err != nil {
+		log.Fatalf("Failed to find working directory: %v", err)
+	}
+	Python27Path = filepath.Join(wd, Python27Name)
+	SandboxPath = filepath.Join(wd, SandboxName)
+
+	http.Handle("/python27stdin", jsonHandler(python27stdin_handler))
+	http.HandleFunc("/list", func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("%s %s", r.Method, r.URL)
+		writeJson(w, r, []*ProblemType{Python27StdinDescription})
+	})
+
+	log.Printf("Listening on %s", address)
+	if err = http.ListenAndServe(address, nil); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -43,12 +87,12 @@ type jsonHandler func(http.ResponseWriter, *http.Request, *json.Decoder)
 func (h jsonHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	log.Printf("%s %s", r.Method, r.URL)
 	if r.Method != "POST" {
-		log.Printf("method is %s", r.Method)
+		log.Printf("JSON request called with method %s", r.Method)
 		http.Error(w, "Not found", http.StatusNotFound)
 		return
 	}
-	if r.Header.Get("Content-Type") != "application/json" {
-		log.Printf("Content-Type is %s", r.Header.Get("Content-Type"))
+	if !strings.Contains(r.Header.Get("Content-Type"), "application/json") {
+		log.Printf("JSON request called with Content-Type %s", r.Header.Get("Content-Type"))
 		http.Error(w, "Request must be in JSON format; must include Content-Type: appluication/json in request", http.StatusBadRequest)
 		return
 	}
