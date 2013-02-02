@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type ProblemType struct {
@@ -86,6 +87,7 @@ type jsonHandler func(http.ResponseWriter, *http.Request, *json.Decoder)
 
 func (h jsonHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	log.Printf("%s %s", r.Method, r.URL)
+	start := time.Now()
 	if r.Method != "POST" {
 		log.Printf("JSON request called with method %s", r.Method)
 		http.Error(w, "Not found", http.StatusNotFound)
@@ -106,6 +108,7 @@ func (h jsonHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
 	h(w, r, decoder)
+	log.Printf("  request completed in %v", time.Since(start))
 }
 
 func writeJson(w http.ResponseWriter, r *http.Request, elt interface{}) {

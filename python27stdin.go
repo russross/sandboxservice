@@ -270,6 +270,7 @@ func python27stdin_handler(w http.ResponseWriter, r *http.Request, decoder *json
 		Passed: true,
 	}
 
+	passcount := 0
 	for n, test := range request.Tests {
 		// run it with the reference solution
 		ref, err := request.RunTest(test, request.Reference)
@@ -298,6 +299,7 @@ func python27stdin_handler(w http.ResponseWriter, r *http.Request, decoder *json
 			response.Passed = false
 		} else {
 			response.Report += fmt.Sprintf("Test #%d: PASSED\n", n+1)
+			passcount++
 		}
 
 		// give a few details
@@ -314,6 +316,11 @@ func python27stdin_handler(w http.ResponseWriter, r *http.Request, decoder *json
 				ref.Stdout,
 				cand.Stdout)
 		}
+	}
+	if len(request.Tests) == 1 {
+		log.Printf("  passed %d/%d test", passcount, len(request.Tests))
+	} else {
+		log.Printf("  passed %d/%d tests", passcount, len(request.Tests))
 	}
 
 	writeJson(w, r, response)
