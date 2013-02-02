@@ -93,11 +93,11 @@ func (h jsonHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if !strings.Contains(r.Header.Get("Content-Type"), "application/json") {
 		log.Printf("JSON request called with Content-Type %s", r.Header.Get("Content-Type"))
-		http.Error(w, "Request must be in JSON format; must include Content-Type: appluication/json in request", http.StatusBadRequest)
+		http.Error(w, "Request must be in JSON format; must include Content-Type: application/json in request", http.StatusBadRequest)
 		return
 	}
-	if !strings.Contains(r.Header.Get("Accept"), "application/json") {
-		log.Printf("Accept is %s", r.Header.Get("Accept"))
+	if !strings.Contains(r.Header.Get("Accept"), "application/json") && !strings.Contains(r.Header.Get("Accept"), "*/*") {
+		log.Printf("Client does not accept application/json; Accept is %s", r.Header.Get("Accept"))
 		http.Error(w, "Client does not accept JSON response; must include Accept: application/json in request", http.StatusBadRequest)
 		return
 	}
