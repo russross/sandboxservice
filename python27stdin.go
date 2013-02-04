@@ -20,6 +20,26 @@ var Python27StdinDescription = &ProblemType{
 	Tag:  "python27stdin",
 	FieldList: []ProblemField{
 		{
+			Name:    "Passed",
+			Prompt:  "Did the solution pass?",
+			Title:   "Did the solution pass?",
+			Type:    "bool",
+			Creator: "nothing",
+			Student: "nothing",
+			Grader:  "edit",
+			Result:  "view",
+		},
+		{
+			Name:    "Report",
+			Prompt:  "Grader report",
+			Title:   "Grader report",
+			Type:    "text",
+			Creator: "nothing",
+			Student: "nothing",
+			Grader:  "edit",
+			Result:  "view",
+		},
+		{
 			Name:    "Description",
 			Prompt:  "Enter the problem description here",
 			Title:   "Problem description",
@@ -80,26 +100,6 @@ var Python27StdinDescription = &ProblemType{
 			Creator: "edit",
 			Student: "view",
 			Grader:  "view",
-			Result:  "view",
-		},
-		{
-			Name:    "Report",
-			Prompt:  "Grader report",
-			Title:   "Grader report",
-			Type:    "text",
-			Creator: "nothing",
-			Student: "nothing",
-			Grader:  "edit",
-			Result:  "view",
-		},
-		{
-			Name:    "Passed",
-			Prompt:  "Did the solution pass?",
-			Title:   "Did the solution pass?",
-			Type:    "bool",
-			Creator: "nothing",
-			Student: "nothing",
-			Grader:  "edit",
 			Result:  "view",
 		},
 	},
@@ -257,10 +257,12 @@ func (req *Python27StdinRequest) RunTest(input, source string) (*TestResult, err
 func python27stdin_handler(w http.ResponseWriter, r *http.Request, decoder *json.Decoder) {
 	request := new(Python27StdinRequest)
 	if err := decoder.Decode(request); err != nil {
+		log.Printf("Error decoding input: %v", err)
 		http.Error(w, fmt.Sprintf("Error decoding input: %v", err), http.StatusBadRequest)
 		return
 	}
 	if err := request.Validate(); err != nil {
+		log.Printf("Error validating input: %v", err)
 		http.Error(w, fmt.Sprintf("Error validating input: %v", err), http.StatusBadRequest)
 		return
 	}
@@ -311,8 +313,8 @@ func python27stdin_handler(w http.ResponseWriter, r *http.Request, decoder *json
 		}
 		if !ref.Error && !cand.Error && ref.Stdout != cand.Stdout {
 			response.Report += fmt.Sprintf("The output was incorrect.\n\n"+
-				"The correct output is:\n[[[[\n%s]]]]\n\n"+
-				"Your output was:\n[[[[\n%s]]]]\n",
+				"The correct output is:\n<<<<\n%s>>>>\n\n"+
+				"Your output was:\n<<<<\n%s>>>>\n",
 				ref.Stdout,
 				cand.Stdout)
 		}
