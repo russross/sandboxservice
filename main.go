@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 )
 
 type ProblemType struct {
@@ -82,9 +83,13 @@ func main() {
 	SandboxPath = filepath.Join(wd, SandboxName)
 
 	http.Handle("/python27stdin", jsonHandler(python27stdin_handler))
+	http.Handle("/python27module", jsonHandler(python27module_handler))
 	http.HandleFunc("/list", func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("%s %s", r.Method, r.URL)
-		writeJson(w, r, []*ProblemType{Python27StdinDescription})
+		writeJson(w, r, []*ProblemType{
+			Python27StdinDescription,
+			Python27ModuleDescription,
+		})
 	})
 
 	log.Printf("Listening on %s", address)
@@ -102,6 +107,23 @@ func fileExists(path string) (bool, error) {
 		return false, nil
 	}
 	return false, err
+}
+
+func fixLineEndings(s string) string {
+	s = strings.Replace(s, "\r\n", "\n", -1)
+	if !strings.HasSuffix(s, "\n") {
+		s = s + "\n"
+	}
+	return s
+}
+
+func isEmpty(s string) bool {
+	for _, ch := range s {
+		if !unicode.IsSpace(ch) {
+			return false
+		}
+	}
+	return true
 }
 
 type jsonHandler func(http.ResponseWriter, *http.Request, *json.Decoder)

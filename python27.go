@@ -96,7 +96,7 @@ var Python27ModuleDescription = &ProblemType{
 			Prompt:  "Max time permitted in seconds",
 			Title:   "Max time permitted in seconds",
 			Type:    "int",
-			Default: "10",
+			Default: "2",
 			Creator: "edit",
 			Student: "view",
 			Grader:  "view",
@@ -116,7 +116,108 @@ var Python27ModuleDescription = &ProblemType{
 	},
 }
 
-type Python27ModuleRequest struct {
+var Python27StdinDescription = &ProblemType{
+	Name: "Python 2.7 Stdin",
+	Tag:  "python27stdin",
+	FieldList: []ProblemField{
+		{
+			Name:    "Passed",
+			Prompt:  "Did the solution pass?",
+			Title:   "Did the solution pass?",
+			Type:    "bool",
+			Creator: "nothing",
+			Student: "nothing",
+			Grader:  "edit",
+			Result:  "view",
+		},
+		{
+			Name:    "Report",
+			Prompt:  "Grader report",
+			Title:   "Grader report",
+			Type:    "text",
+			Creator: "nothing",
+			Student: "nothing",
+			Grader:  "edit",
+			Result:  "view",
+		},
+		{
+			Name:    "Description",
+			Prompt:  "Enter the problem description here",
+			Title:   "Problem description",
+			Type:    "markdown",
+			Creator: "edit",
+			Student: "view",
+			Grader:  "nothing",
+			Result:  "view",
+		},
+		{
+			Name:    "Reference",
+			Prompt:  "Enter the reference solution here",
+			Title:   "Reference solution",
+			Type:    "python",
+			Creator: "edit",
+			Student: "nothing",
+			Grader:  "view",
+			Result:  "nothing",
+		},
+		{
+			Name:    "Candidate",
+			Prompt:  "Enter your solution here",
+			Title:   "Student solution",
+			Type:    "python",
+			Creator: "nothing",
+			Student: "edit",
+			Grader:  "view",
+			Result:  "view",
+		},
+		{
+			Name:    "Tests",
+			Prompt:  "Test cases",
+			Title:   "This data will be given to you via Stdin",
+			Type:    "text",
+			List:    true,
+			Creator: "edit",
+			Student: "view",
+			Grader:  "view",
+			Result:  "view",
+		},
+		{
+			Name:    "HiddenTests",
+			Prompt:  "Hidden test cases",
+			Title:   "This data will also be given to you via Stdin",
+			Type:    "text",
+			List:    true,
+			Creator: "edit",
+			Student: "nothing",
+			Grader:  "view",
+			Result:  "nothing",
+		},
+		{
+			Name:    "MaxSeconds",
+			Prompt:  "Max time permitted in seconds",
+			Title:   "Max time permitted in seconds",
+			Type:    "int",
+			Default: "2",
+			Creator: "edit",
+			Student: "view",
+			Grader:  "view",
+			Result:  "view",
+		},
+		{
+			Name:    "MaxMB",
+			Prompt:  "Max memory permitted in megabytes",
+			Title:   "Max memory permitted in megabytes",
+			Type:    "int",
+			Default: "32",
+			Creator: "edit",
+			Student: "view",
+			Grader:  "view",
+			Result:  "view",
+		},
+	},
+}
+
+type Python27CommonRequest struct {
 	Reference   string
 	Candidate   string
 	Tests       []string
@@ -125,45 +226,41 @@ type Python27ModuleRequest struct {
 	MaxMB       int
 }
 
-func (elt *Python27ModuleRequest) Validate() error {
+func (elt *Python27CommonRequest) Validate() error {
 	// check Reference solution
-	if elt.Reference == "" {
+	elt.Reference = fixLineEndings(elt.Reference)
+	if isEmpty(elt.Reference) {
 		return fmt.Errorf("Reference solution is required")
-	}
-	elt.Reference = strings.Replace(elt.Reference, "\r\n", "\n", -1)
-	if !strings.HasSuffix(elt.Reference, "\n") {
-		elt.Reference = elt.Reference + "\n"
 	}
 
 	// check Candidate solution
-	if elt.Candidate == "" {
+	elt.Candidate = fixLineEndings(elt.Candidate)
+	if isEmpty(elt.Candidate) {
 		return fmt.Errorf("Candidate solution is required")
-	}
-	elt.Candidate = strings.Replace(elt.Candidate, "\r\n", "\n", -1)
-	if !strings.HasSuffix(elt.Candidate, "\n") {
-		elt.Candidate = elt.Candidate + "\n"
 	}
 
 	// check Test list
+	lst := []string{}
+	for _, test := range elt.Tests {
+		test = fixLineEndings(test)
+		if !isEmpty(test) {
+			lst = append(lst, test)
+		}
+	}
+	elt.Tests = lst
 	if len(elt.Tests) == 0 {
 		return fmt.Errorf("Tests list must not be empty")
 	}
-	for i, test := range elt.Tests {
-		test = strings.Replace(test, "\r\n", "\n", -1)
-		if !strings.HasSuffix(test, "\n") {
-			test = test + "\n"
-		}
-		elt.Tests[i] = test
-	}
 
 	// check HiddenTest list
-	for i, test := range elt.HiddenTests {
-		test = strings.Replace(test, "\r\n", "\n", -1)
-		if !strings.HasSuffix(test, "\n") {
-			test = test + "\n"
+	lst = []string{}
+	for _, test := range elt.HiddenTests {
+		test = fixLineEndings(test)
+		if !isEmpty(test) {
+			lst = append(lst, test)
 		}
-		elt.HiddenTests[i] = test
 	}
+	elt.HiddenTests = lst
 
 	// check MaxSeconds
 	if elt.MaxSeconds < 1 {
@@ -182,7 +279,7 @@ func (elt *Python27ModuleRequest) Validate() error {
 	return nil
 }
 
-func (req *Python27ModuleRequest) RunTest(main, source string) (*TestResult, error) {
+func (req *Python27CommonRequest) RunTest(test, source string, isModule bool) (*TestResult, error) {
 	// create a sandbox directory
 	dirname, err := ioutil.TempDir("", "sandbox")
 	if err != nil {
@@ -191,14 +288,24 @@ func (req *Python27ModuleRequest) RunTest(main, source string) (*TestResult, err
 	defer os.RemoveAll(dirname)
 
 	// set up the environment files
-	stdin := strings.NewReader("")
+	stdinData := ""
+	if !isModule {
+		stdinData = test
+	}
+	stdin := strings.NewReader(stdinData)
 	stdout := new(bytes.Buffer)
 	stderr := new(bytes.Buffer)
-	if err := ioutil.WriteFile(filepath.Join(dirname, "main.py"), []byte(main), 0644); err != nil {
-		return nil, fmt.Errorf("Failed to create main.py file: %v", err)
-	}
-	if err := ioutil.WriteFile(filepath.Join(dirname, "student.py"), []byte(source), 0644); err != nil {
-		return nil, fmt.Errorf("Failed to create student.py file: %v", err)
+	if isModule {
+		if err := ioutil.WriteFile(filepath.Join(dirname, "main.py"), []byte(test), 0644); err != nil {
+			return nil, fmt.Errorf("Failed to create main.py file: %v", err)
+		}
+		if err := ioutil.WriteFile(filepath.Join(dirname, "student.py"), []byte(source), 0644); err != nil {
+			return nil, fmt.Errorf("Failed to create student.py file: %v", err)
+		}
+	} else {
+		if err := ioutil.WriteFile(filepath.Join(dirname, "main.py"), []byte(source), 0644); err != nil {
+			return nil, fmt.Errorf("Failed to create main.py file: %v", err)
+		}
 	}
 
 	// execute the test
@@ -257,7 +364,15 @@ func (req *Python27ModuleRequest) RunTest(main, source string) (*TestResult, err
 }
 
 func python27module_handler(w http.ResponseWriter, r *http.Request, decoder *json.Decoder) {
-	request := new(Python27ModuleRequest)
+	python27_common_handler(w, r, decoder, true)
+}
+
+func python27stdin_handler(w http.ResponseWriter, r *http.Request, decoder *json.Decoder) {
+	python27_common_handler(w, r, decoder, false)
+}
+
+func python27_common_handler(w http.ResponseWriter, r *http.Request, decoder *json.Decoder, isModule bool) {
+	request := new(Python27CommonRequest)
 	if err := decoder.Decode(request); err != nil {
 		log.Printf("Error decoding input: %v", err)
 		http.Error(w, fmt.Sprintf("Error decoding input: %v", err), http.StatusBadRequest)
@@ -277,7 +392,7 @@ func python27module_handler(w http.ResponseWriter, r *http.Request, decoder *jso
 	passcount := 0
 	for n, test := range request.Tests {
 		// run it with the reference solution
-		ref, err := request.RunTest(test, request.Reference)
+		ref, err := request.RunTest(test, request.Reference, isModule)
 		if err != nil {
 			log.Printf("Error running reference solution %d: %v", n, err)
 			http.Error(w, fmt.Sprintf("Error running reference solution %d: %v", n, err), http.StatusInternalServerError)
@@ -285,7 +400,7 @@ func python27module_handler(w http.ResponseWriter, r *http.Request, decoder *jso
 		}
 
 		// run it with the candidate solution
-		cand, err := request.RunTest(test, request.Candidate)
+		cand, err := request.RunTest(test, request.Candidate, isModule)
 		if err != nil {
 			log.Printf("Error running candidate solution %d: %v", n, err)
 			http.Error(w, fmt.Sprintf("Error running candidate solution %d: %v", n, err), http.StatusInternalServerError)
@@ -309,9 +424,15 @@ func python27module_handler(w http.ResponseWriter, r *http.Request, decoder *jso
 		// give a few details
 		if ref.Error {
 			response.Report += fmt.Sprintf("The reference solution ended in error: %s\n", ref.Message)
+			if ref.Stderr != "" {
+				response.Report += fmt.Sprintf("Standard error reported:\n<<<<\n%s>>>>\n\n", ref.Stderr)
+			}
 		}
 		if cand.Error {
 			response.Report += fmt.Sprintf("The candidate solution ended in error: %s\n", cand.Message)
+			if cand.Stderr != "" {
+				response.Report += fmt.Sprintf("Standard error reported:\n<<<<\n%s>>>>\n\n", cand.Stderr)
+			}
 		}
 		if !ref.Error && !cand.Error && ref.Stdout != cand.Stdout {
 			response.Report += fmt.Sprintf("The output was incorrect.\n\n"+
@@ -323,7 +444,7 @@ func python27module_handler(w http.ResponseWriter, r *http.Request, decoder *jso
 	}
 	for n, test := range request.HiddenTests {
 		// run it with the reference solution
-		ref, err := request.RunTest(test, request.Reference)
+		ref, err := request.RunTest(test, request.Reference, isModule)
 		if err != nil {
 			log.Printf("Error running reference solution on hidden %d: %v", n, err)
 			http.Error(w, fmt.Sprintf("Error running reference solution on hidden %d: %v", n, err), http.StatusInternalServerError)
@@ -331,7 +452,7 @@ func python27module_handler(w http.ResponseWriter, r *http.Request, decoder *jso
 		}
 
 		// run it with the candidate solution
-		cand, err := request.RunTest(test, request.Candidate)
+		cand, err := request.RunTest(test, request.Candidate, isModule)
 		if err != nil {
 			log.Printf("Error running candidate solution on hidden %d: %v", n, err)
 			http.Error(w, fmt.Sprintf("Error running candidate solution on hidden %d: %v", n, err), http.StatusInternalServerError)
@@ -367,10 +488,11 @@ func python27module_handler(w http.ResponseWriter, r *http.Request, decoder *jso
 				cand.Stdout)
 		}
 	}
-	if len(request.Tests)+len(request.HiddenTests) == 1 {
-		log.Printf("  passed %d/%d test", passcount, len(request.Tests)+len(request.HiddenTests))
+	tests := len(request.Tests) + len(request.HiddenTests)
+	if tests == 1 {
+		log.Printf("  passed %d/%d test", passcount, tests)
 	} else {
-		log.Printf("  passed %d/%d tests", passcount, len(request.Tests)+len(request.HiddenTests))
+		log.Printf("  passed %d/%d tests", passcount, tests)
 	}
 
 	writeJson(w, r, response)
