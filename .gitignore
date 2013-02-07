@@ -1,4 +1,5 @@
 sandboxservice
+sandboxservice.log
 sandbox
 python2.7-static
 *.swp
