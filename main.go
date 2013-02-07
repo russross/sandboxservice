@@ -37,6 +37,7 @@ const (
 	CompressionThreshold = 1024
 	Python27Name         = "bin/python2.7-static"
 	SandboxName          = "bin/sandbox"
+	LogFileName          = "sandboxservice.log"
 	MaxMB                = 256
 	MaxSeconds           = 60
 )
@@ -52,6 +53,14 @@ func main() {
 	if len(os.Args) == 2 {
 		address = os.Args[1]
 	}
+
+	// set log file
+	logfile, err := os.OpenFile(LogFileName, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0666)
+	if err != nil {
+		log.Fatalf("Failed to open logfile %s: %v", LogFileName, err)
+	}
+	defer logfile.Close()
+	log.SetOutput(logfile)
 
 	wd, err := os.Getwd()
 	if err != nil {
