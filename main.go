@@ -45,7 +45,7 @@ type TestResult struct {
 }
 
 const (
-	DefaultAddress       = ":80"
+	DefaultAddress       = ":8081"
 	CompressionThreshold = 1024
 	Python27Name         = "bin/python2.7-static"
 	SandboxName          = "bin/sandbox"
