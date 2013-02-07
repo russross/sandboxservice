@@ -15,9 +15,9 @@ import (
 	"time"
 )
 
-var Python27StdinDescription = &ProblemType{
-	Name: "Python 2.7 Stdin",
-	Tag:  "python27stdin",
+var Python27ModuleDescription = &ProblemType{
+	Name: "Python 2.7 Module",
+	Tag:  "python27module",
 	FieldList: []ProblemField{
 		{
 			Name:    "Passed",
@@ -71,14 +71,25 @@ var Python27StdinDescription = &ProblemType{
 		},
 		{
 			Name:    "Tests",
-			Prompt:  "Test cases",
-			Title:   "This data will be given to you via Stdin",
-			Type:    "text",
+			Prompt:  "Test drivers",
+			Title:   "This code will run and will access your code as the 'student' module",
+			Type:    "python",
 			List:    true,
 			Creator: "edit",
 			Student: "view",
 			Grader:  "view",
 			Result:  "view",
+		},
+		{
+			Name:    "HiddenTests",
+			Prompt:  "Hidden test drivers",
+			Title:   "This code will also run and access your code as the 'student' module",
+			Type:    "python",
+			List:    true,
+			Creator: "edit",
+			Student: "nothing",
+			Grader:  "view",
+			Result:  "nothing",
 		},
 		{
 			Name:    "MaxSeconds",
@@ -105,15 +116,16 @@ var Python27StdinDescription = &ProblemType{
 	},
 }
 
-type Python27StdinRequest struct {
-	Reference  string
-	Candidate  string
-	Tests      []string
-	MaxSeconds int
-	MaxMB      int
+type Python27ModuleRequest struct {
+	Reference   string
+	Candidate   string
+	Tests       []string
+	HiddenTests []string
+	MaxSeconds  int
+	MaxMB       int
 }
 
-func (elt *Python27StdinRequest) Validate() error {
+func (elt *Python27ModuleRequest) Validate() error {
 	// check Reference solution
 	if elt.Reference == "" {
 		return fmt.Errorf("Reference solution is required")
@@ -144,6 +156,15 @@ func (elt *Python27StdinRequest) Validate() error {
 		elt.Tests[i] = test
 	}
 
+	// check HiddenTest list
+	for i, test := range elt.HiddenTests {
+		test = strings.Replace(test, "\r\n", "\n", -1)
+		if !strings.HasSuffix(test, "\n") {
+			test = test + "\n"
+		}
+		elt.HiddenTests[i] = test
+	}
+
 	// check MaxSeconds
 	if elt.MaxSeconds < 1 {
 		return fmt.Errorf("MaxSeconds must be >= 1")
@@ -161,7 +182,7 @@ func (elt *Python27StdinRequest) Validate() error {
 	return nil
 }
 
-func (req *Python27StdinRequest) RunTest(input, source string) (*TestResult, error) {
+func (req *Python27ModuleRequest) RunTest(main, source string) (*TestResult, error) {
 	// create a sandbox directory
 	dirname, err := ioutil.TempDir("", "sandbox")
 	if err != nil {
@@ -170,9 +191,12 @@ func (req *Python27StdinRequest) RunTest(input, source string) (*TestResult, err
 	defer os.RemoveAll(dirname)
 
 	// set up the environment files
-	stdin := strings.NewReader(input)
+	stdin := strings.NewReader("")
 	stdout := new(bytes.Buffer)
 	stderr := new(bytes.Buffer)
+	if err := ioutil.WriteFile(filepath.Join(dirname, "main.py"), []byte(main), 0644); err != nil {
+		return nil, fmt.Errorf("Failed to create main.py file: %v", err)
+	}
 	if err := ioutil.WriteFile(filepath.Join(dirname, "student.py"), []byte(source), 0644); err != nil {
 		return nil, fmt.Errorf("Failed to create student.py file: %v", err)
 	}
@@ -182,7 +206,7 @@ func (req *Python27StdinRequest) RunTest(input, source string) (*TestResult, err
 		"-m", strconv.Itoa(req.MaxMB),
 		"-c", strconv.Itoa(req.MaxSeconds+1),
 		"--",
-		Python27Path, "student.py",
+		Python27Path, "main.py",
 	)
 	cmd.Dir = dirname
 	cmd.Stdin = stdin
@@ -232,8 +256,8 @@ func (req *Python27StdinRequest) RunTest(input, source string) (*TestResult, err
 	return result, nil
 }
 
-func python27stdin_handler(w http.ResponseWriter, r *http.Request, decoder *json.Decoder) {
-	request := new(Python27StdinRequest)
+func python27module_handler(w http.ResponseWriter, r *http.Request, decoder *json.Decoder) {
+	request := new(Python27ModuleRequest)
 	if err := decoder.Decode(request); err != nil {
 		log.Printf("Error decoding input: %v", err)
 		http.Error(w, fmt.Sprintf("Error decoding input: %v", err), http.StatusBadRequest)
@@ -297,10 +321,56 @@ func python27stdin_handler(w http.ResponseWriter, r *http.Request, decoder *json
 				cand.Stdout)
 		}
 	}
-	if len(request.Tests) == 1 {
-		log.Printf("  passed %d/%d test", passcount, len(request.Tests))
+	for n, test := range request.HiddenTests {
+		// run it with the reference solution
+		ref, err := request.RunTest(test, request.Reference)
+		if err != nil {
+			log.Printf("Error running reference solution on hidden %d: %v", n, err)
+			http.Error(w, fmt.Sprintf("Error running reference solution on hidden %d: %v", n, err), http.StatusInternalServerError)
+			return
+		}
+
+		// run it with the candidate solution
+		cand, err := request.RunTest(test, request.Candidate)
+		if err != nil {
+			log.Printf("Error running candidate solution on hidden %d: %v", n, err)
+			http.Error(w, fmt.Sprintf("Error running candidate solution on hidden %d: %v", n, err), http.StatusInternalServerError)
+			return
+		}
+
+		// report the result
+		if n > 0 {
+			response.Report += "\n-=-=-=-=-=-=-=-=-\n\n"
+		}
+
+		// record a pass or fail
+		if ref.Error || cand.Error || ref.Stdout != cand.Stdout {
+			response.Report += fmt.Sprintf("Hidden test #%d: FAILED\n", n+1)
+			response.Passed = false
+		} else {
+			response.Report += fmt.Sprintf("Hidden test #%d: PASSED\n", n+1)
+			passcount++
+		}
+
+		// give a few details
+		if ref.Error {
+			response.Report += fmt.Sprintf("The reference solution ended in error: %s\n", ref.Message)
+		}
+		if cand.Error {
+			response.Report += fmt.Sprintf("The candidate solution ended in error: %s\n", cand.Message)
+		}
+		if !ref.Error && !cand.Error && ref.Stdout != cand.Stdout {
+			response.Report += fmt.Sprintf("The output was incorrect.\n\n"+
+				"The correct output is:\n<<<<\n%s>>>>\n\n"+
+				"Your output was:\n<<<<\n%s>>>>\n",
+				ref.Stdout,
+				cand.Stdout)
+		}
+	}
+	if len(request.Tests)+len(request.HiddenTests) == 1 {
+		log.Printf("  passed %d/%d test", passcount, len(request.Tests)+len(request.HiddenTests))
 	} else {
-		log.Printf("  passed %d/%d tests", passcount, len(request.Tests))
+		log.Printf("  passed %d/%d tests", passcount, len(request.Tests)+len(request.HiddenTests))
 	}
 
 	writeJson(w, r, response)

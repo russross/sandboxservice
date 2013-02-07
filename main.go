@@ -32,6 +32,18 @@ type ProblemField struct {
 	Result  string
 }
 
+type GenericResponse struct {
+	Report string
+	Passed bool
+}
+
+type TestResult struct {
+	Error   bool
+	Message string
+	Stdout  string
+	Stderr  string
+}
+
 const (
 	DefaultAddress       = ":80"
 	CompressionThreshold = 1024
