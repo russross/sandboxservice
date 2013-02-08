@@ -235,9 +235,6 @@ func (elt *Python27CommonRequest) Validate() error {
 
 	// check Candidate solution
 	elt.Candidate = fixLineEndings(elt.Candidate)
-	if isEmpty(elt.Candidate) {
-		return fmt.Errorf("Candidate solution is required")
-	}
 
 	// check Test list
 	lst := []string{}
@@ -424,12 +421,18 @@ func python27_common_handler(w http.ResponseWriter, r *http.Request, decoder *js
 		// give a few details
 		if ref.Error {
 			response.Report += fmt.Sprintf("The reference solution ended in error: %s\n", ref.Message)
+			if ref.Stdout != "" {
+				response.Report += fmt.Sprintf("Standard output before it quit:\n<<<<\n%s>>>>\n\n", ref.Stdout)
+			}
 			if ref.Stderr != "" {
 				response.Report += fmt.Sprintf("Standard error reported:\n<<<<\n%s>>>>\n\n", ref.Stderr)
 			}
 		}
 		if cand.Error {
 			response.Report += fmt.Sprintf("The candidate solution ended in error: %s\n", cand.Message)
+			if cand.Stdout != "" {
+				response.Report += fmt.Sprintf("Standard output before it quit:\n<<<<\n%s>>>>\n\n", cand.Stdout)
+			}
 			if cand.Stderr != "" {
 				response.Report += fmt.Sprintf("Standard error reported:\n<<<<\n%s>>>>\n\n", cand.Stderr)
 			}
