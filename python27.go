@@ -463,9 +463,7 @@ func python27_common_handler(w http.ResponseWriter, r *http.Request, decoder *js
 		}
 
 		// report the result
-		if n > 0 {
-			response.Report += "\n-=-=-=-=-=-=-=-=-\n\n"
-		}
+		response.Report += "\n-=-=-=-=-=-=-=-=-\n\n"
 
 		// record a pass or fail
 		if ref.Error || cand.Error || ref.Stdout != cand.Stdout {
@@ -482,13 +480,6 @@ func python27_common_handler(w http.ResponseWriter, r *http.Request, decoder *js
 		}
 		if cand.Error {
 			response.Report += fmt.Sprintf("The candidate solution ended in error: %s\n", cand.Message)
-		}
-		if !ref.Error && !cand.Error && ref.Stdout != cand.Stdout {
-			response.Report += fmt.Sprintf("The output was incorrect.\n\n"+
-				"The correct output is:\n<<<<\n%s>>>>\n\n"+
-				"Your output was:\n<<<<\n%s>>>>\n",
-				ref.Stdout,
-				cand.Stdout)
 		}
 	}
 	tests := len(request.Tests) + len(request.HiddenTests)
