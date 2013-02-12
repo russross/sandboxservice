@@ -72,7 +72,7 @@ var Python27ModuleDescription = &ProblemType{
 		{
 			Name:    "Tests",
 			Prompt:  "Test drivers",
-			Title:   "This code will run and will access your code as the 'student' module",
+			Title:   "This code will run and will access your code as the 'Candidate' module",
 			Type:    "python",
 			List:    true,
 			Creator: "edit",
@@ -83,7 +83,7 @@ var Python27ModuleDescription = &ProblemType{
 		{
 			Name:    "HiddenTests",
 			Prompt:  "Hidden test drivers",
-			Title:   "This code will also run and access your code as the 'student' module",
+			Title:   "This code will also run and access your code as the 'Candidate' module",
 			Type:    "python",
 			List:    true,
 			Creator: "edit",
@@ -296,8 +296,8 @@ func (req *Python27CommonRequest) RunTest(test, source string, isModule bool) (*
 		if err := ioutil.WriteFile(filepath.Join(dirname, "main.py"), []byte(test), 0644); err != nil {
 			return nil, fmt.Errorf("Failed to create main.py file: %v", err)
 		}
-		if err := ioutil.WriteFile(filepath.Join(dirname, "student.py"), []byte(source), 0644); err != nil {
-			return nil, fmt.Errorf("Failed to create student.py file: %v", err)
+		if err := ioutil.WriteFile(filepath.Join(dirname, "Candidate.py"), []byte(source), 0644); err != nil {
+			return nil, fmt.Errorf("Failed to create Candidate.py file: %v", err)
 		}
 	} else {
 		if err := ioutil.WriteFile(filepath.Join(dirname, "main.py"), []byte(source), 0644); err != nil {
