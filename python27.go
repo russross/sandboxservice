@@ -481,6 +481,9 @@ func python27_common_handler(w http.ResponseWriter, r *http.Request, decoder *js
 		if cand.Error {
 			response.Report += fmt.Sprintf("The candidate solution ended in error: %s\n", cand.Message)
 		}
+		if !ref.Error && !cand.Error && ref.Stdout != cand.Stdout {
+			response.Report += "The output was incorrect.\n"
+		}
 	}
 	tests := len(request.Tests) + len(request.HiddenTests)
 	if tests == 1 {
