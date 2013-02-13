@@ -82,8 +82,8 @@ func main() {
 	Python27Path = filepath.Join(wd, Python27Name)
 	SandboxPath = filepath.Join(wd, SandboxName)
 
-	http.Handle("/python27stdin", jsonHandler(python27stdin_handler))
-	http.Handle("/python27module", jsonHandler(python27module_handler))
+	http.Handle("/grade/python27stdin", jsonHandler(python27stdin_handler))
+	http.Handle("/grade/python27module", jsonHandler(python27module_handler))
 	http.HandleFunc("/list", func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("%s %s", r.Method, r.URL)
 		writeJson(w, r, []*ProblemType{
