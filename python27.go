@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha1"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -14,6 +15,10 @@ import (
 	"strings"
 	"time"
 )
+
+// maps hash of testtype:referencesolution:testdata to *TestResult
+// only used for reference solutions
+var cache = make(map[string]*TestResult)
 
 var Python27ModuleDescription = &ProblemType{
 	Name: "Python 2.7 Module",
@@ -78,6 +83,17 @@ var Python27ModuleDescription = &ProblemType{
 			Creator: "edit",
 			Student: "view",
 			Grader:  "view",
+			Result:  "view",
+		},
+		{
+			Name:    "Output",
+			Prompt:  "Expected output",
+			Title:   "This is the output produced by the reference solution",
+			Type:    "text",
+			List:    true,
+			Creator: "nothing",
+			Student: "view",
+			Grader:  "nothing",
 			Result:  "view",
 		},
 		{
@@ -182,6 +198,17 @@ var Python27StdinDescription = &ProblemType{
 			Result:  "view",
 		},
 		{
+			Name:    "Output",
+			Prompt:  "Expected output",
+			Title:   "This is the output produced by the reference solution",
+			Type:    "text",
+			List:    true,
+			Creator: "nothing",
+			Student: "view",
+			Grader:  "nothing",
+			Result:  "view",
+		},
+		{
 			Name:    "HiddenTests",
 			Prompt:  "Hidden test cases",
 			Title:   "This data will also be given to you via Stdin",
@@ -274,6 +301,26 @@ func (elt *Python27CommonRequest) Validate() error {
 	}
 
 	return nil
+}
+
+func (req *Python27CommonRequest) RunReferenceTest(test, source string, isModule bool) (*TestResult, error) {
+	// create a signature
+	h := sha1.New()
+	if isModule {
+		fmt.Fprintf(h, "python27module")
+	} else {
+		fmt.Fprintf(h, "python27stdin")
+	}
+	fmt.Fprintf(h, "\ue000%s\ue000%s", source, test)
+	key := fmt.Sprintf("%x", h.Sum(nil))
+	if result, present := cache[key]; present {
+		return result, nil
+	}
+	result, err := req.RunTest(test, source, isModule)
+	if err == nil {
+		cache[key] = result
+	}
+	return result, err
 }
 
 func (req *Python27CommonRequest) RunTest(test, source string, isModule bool) (*TestResult, error) {
@@ -389,7 +436,7 @@ func python27_common_handler(w http.ResponseWriter, r *http.Request, decoder *js
 	passcount := 0
 	for n, test := range request.Tests {
 		// run it with the reference solution
-		ref, err := request.RunTest(test, request.Reference, isModule)
+		ref, err := request.RunReferenceTest(test, request.Reference, isModule)
 		if err != nil {
 			log.Printf("Error running reference solution %d: %v", n, err)
 			http.Error(w, fmt.Sprintf("Error running reference solution %d: %v", n, err), http.StatusInternalServerError)
@@ -447,7 +494,7 @@ func python27_common_handler(w http.ResponseWriter, r *http.Request, decoder *js
 	}
 	for n, test := range request.HiddenTests {
 		// run it with the reference solution
-		ref, err := request.RunTest(test, request.Reference, isModule)
+		ref, err := request.RunReferenceTest(test, request.Reference, isModule)
 		if err != nil {
 			log.Printf("Error running reference solution on hidden %d: %v", n, err)
 			http.Error(w, fmt.Sprintf("Error running reference solution on hidden %d: %v", n, err), http.StatusInternalServerError)
@@ -491,6 +538,58 @@ func python27_common_handler(w http.ResponseWriter, r *http.Request, decoder *js
 	} else {
 		log.Printf("  passed %d/%d tests", passcount, tests)
 	}
+
+	writeJson(w, r, response)
+}
+
+func python27module_output_handler(w http.ResponseWriter, r *http.Request, decoder *json.Decoder) {
+	python27_common_output_handler(w, r, decoder, true)
+}
+
+func python27stdin_output_handler(w http.ResponseWriter, r *http.Request, decoder *json.Decoder) {
+	python27_common_output_handler(w, r, decoder, false)
+}
+
+func python27_common_output_handler(w http.ResponseWriter, r *http.Request, decoder *json.Decoder, isModule bool) {
+	request := new(Python27CommonRequest)
+	if err := decoder.Decode(request); err != nil {
+		log.Printf("Error decoding input: %v", err)
+		http.Error(w, fmt.Sprintf("Error decoding input: %v", err), http.StatusBadRequest)
+		return
+	}
+	if err := request.Validate(); err != nil {
+		log.Printf("Error validating input: %v", err)
+		http.Error(w, fmt.Sprintf("Error validating input: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	results := []string{}
+
+	for n, test := range request.Tests {
+		// run it with the reference solution
+		ref, err := request.RunReferenceTest(test, request.Reference, isModule)
+		if err != nil {
+			log.Printf("Error running reference solution %d: %v", n, err)
+			http.Error(w, fmt.Sprintf("Error running reference solution %d: %v", n, err), http.StatusInternalServerError)
+			return
+		}
+
+		// give a few details
+		if ref.Error {
+			msg := fmt.Sprintf("The reference solution ended in error: %s\n", ref.Message)
+			if ref.Stdout != "" {
+				msg += fmt.Sprintf("Standard output before it quit:\n<<<<\n%s>>>>\n\n", ref.Stdout)
+			}
+			if ref.Stderr != "" {
+				msg += fmt.Sprintf("Standard error reported:\n<<<<\n%s>>>>\n\n", ref.Stderr)
+			}
+			results = append(results, msg)
+		} else {
+			results = append(results, ref.Stdout)
+		}
+	}
+
+	response := map[string][]string{"Output": results}
 
 	writeJson(w, r, response)
 }

@@ -53,6 +53,7 @@ const (
 	LogFileName          = "sandboxservice.log"
 	MaxMB                = 256
 	MaxSeconds           = 60
+	JSONIndent           = true
 )
 
 var Python27Path string
@@ -84,6 +85,8 @@ func main() {
 
 	http.Handle("/grade/python27stdin", jsonHandler(python27stdin_handler))
 	http.Handle("/grade/python27module", jsonHandler(python27module_handler))
+	http.Handle("/output/python27stdin", jsonHandler(python27stdin_output_handler))
+	http.Handle("/output/python27module", jsonHandler(python27module_output_handler))
 	http.HandleFunc("/list", func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("%s %s", r.Method, r.URL)
 		writeJson(w, r, []*ProblemType{
@@ -155,7 +158,13 @@ func (h jsonHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func writeJson(w http.ResponseWriter, r *http.Request, elt interface{}) {
-	raw, err := json.MarshalIndent(elt, "", "    ")
+	var raw []byte
+	var err error
+	if JSONIndent {
+		raw, err = json.MarshalIndent(elt, "", "    ")
+	} else {
+		raw, err = json.Marshal(elt)
+	}
 	if err != nil {
 		log.Printf("Error encoding result as JSON: %v", err)
 		http.Error(w, "Failure encoding result as JSON", http.StatusInternalServerError)
