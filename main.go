@@ -50,7 +50,7 @@ const (
 	CompressionThreshold = 1024
 	Python27Name         = "bin/python2.7-static"
 	SandboxName          = "bin/sandbox"
-	LogFileName          = "sandboxservice.log"
+	LogFileName          = "/var/log/sandbox/sandboxservice.log"
 	MaxMB                = 256
 	MaxSeconds           = 60
 	JSONIndent           = true
