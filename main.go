@@ -114,6 +114,9 @@ func fixLineEndings(s string) string {
 	if !strings.HasSuffix(s, "\n") {
 		s = s + "\n"
 	}
+	for strings.Contains(s, " \n") {
+		s = strings.Replace(s, " \n", "\n", -1)
+	}
 	return s
 }
 
