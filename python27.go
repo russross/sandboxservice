@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha1"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -15,6 +16,10 @@ import (
 	"time"
 )
 
+// maps hash of testtype:referencesolution:testdata to *TestResult
+// only used for reference solutions
+var cache = make(map[string]*TestResult)
+
 var Python27ModuleDescription = &ProblemType{
 	Name: "Python 2.7 Module",
 	Tag:  "python27module",
@@ -25,7 +30,7 @@ var Python27ModuleDescription = &ProblemType{
 			Title:   "Did the solution pass?",
 			Type:    "bool",
 			Creator: "nothing",
-			Student: "nothing",
+			Student: "view",
 			Grader:  "edit",
 			Result:  "view",
 		},
@@ -35,7 +40,7 @@ var Python27ModuleDescription = &ProblemType{
 			Title:   "Grader report",
 			Type:    "text",
 			Creator: "nothing",
-			Student: "nothing",
+			Student: "view",
 			Grader:  "edit",
 			Result:  "view",
 		},
@@ -72,7 +77,7 @@ var Python27ModuleDescription = &ProblemType{
 		{
 			Name:    "Tests",
 			Prompt:  "Test drivers",
-			Title:   "This code will run and will access your code as the 'student' module",
+			Title:   "This code will run and will access your code as the 'Candidate' module",
 			Type:    "python",
 			List:    true,
 			Creator: "edit",
@@ -81,9 +86,20 @@ var Python27ModuleDescription = &ProblemType{
 			Result:  "view",
 		},
 		{
+			Name:    "Output",
+			Prompt:  "Expected output",
+			Title:   "This is the output produced by the reference solution",
+			Type:    "text",
+			List:    true,
+			Creator: "nothing",
+			Student: "view",
+			Grader:  "nothing",
+			Result:  "view",
+		},
+		{
 			Name:    "HiddenTests",
 			Prompt:  "Hidden test drivers",
-			Title:   "This code will also run and access your code as the 'student' module",
+			Title:   "This code will also run and access your code as the 'Candidate' module",
 			Type:    "python",
 			List:    true,
 			Creator: "edit",
@@ -126,7 +142,7 @@ var Python27StdinDescription = &ProblemType{
 			Title:   "Did the solution pass?",
 			Type:    "bool",
 			Creator: "nothing",
-			Student: "nothing",
+			Student: "view",
 			Grader:  "edit",
 			Result:  "view",
 		},
@@ -136,7 +152,7 @@ var Python27StdinDescription = &ProblemType{
 			Title:   "Grader report",
 			Type:    "text",
 			Creator: "nothing",
-			Student: "nothing",
+			Student: "view",
 			Grader:  "edit",
 			Result:  "view",
 		},
@@ -179,6 +195,17 @@ var Python27StdinDescription = &ProblemType{
 			Creator: "edit",
 			Student: "view",
 			Grader:  "view",
+			Result:  "view",
+		},
+		{
+			Name:    "Output",
+			Prompt:  "Expected output",
+			Title:   "This is the output produced by the reference solution",
+			Type:    "text",
+			List:    true,
+			Creator: "nothing",
+			Student: "view",
+			Grader:  "nothing",
 			Result:  "view",
 		},
 		{
@@ -276,6 +303,26 @@ func (elt *Python27CommonRequest) Validate() error {
 	return nil
 }
 
+func (req *Python27CommonRequest) RunReferenceTest(test, source string, isModule bool) (*TestResult, error) {
+	// create a signature
+	h := sha1.New()
+	if isModule {
+		fmt.Fprintf(h, "python27module")
+	} else {
+		fmt.Fprintf(h, "python27stdin")
+	}
+	fmt.Fprintf(h, "\ue000%s\ue000%s", source, test)
+	key := fmt.Sprintf("%x", h.Sum(nil))
+	if result, present := cache[key]; present {
+		return result, nil
+	}
+	result, err := req.RunTest(test, source, isModule)
+	if err == nil {
+		cache[key] = result
+	}
+	return result, err
+}
+
 func (req *Python27CommonRequest) RunTest(test, source string, isModule bool) (*TestResult, error) {
 	// create a sandbox directory
 	dirname, err := ioutil.TempDir("", "sandbox")
@@ -296,8 +343,8 @@ func (req *Python27CommonRequest) RunTest(test, source string, isModule bool) (*
 		if err := ioutil.WriteFile(filepath.Join(dirname, "main.py"), []byte(test), 0644); err != nil {
 			return nil, fmt.Errorf("Failed to create main.py file: %v", err)
 		}
-		if err := ioutil.WriteFile(filepath.Join(dirname, "student.py"), []byte(source), 0644); err != nil {
-			return nil, fmt.Errorf("Failed to create student.py file: %v", err)
+		if err := ioutil.WriteFile(filepath.Join(dirname, "Candidate.py"), []byte(source), 0644); err != nil {
+			return nil, fmt.Errorf("Failed to create Candidate.py file: %v", err)
 		}
 	} else {
 		if err := ioutil.WriteFile(filepath.Join(dirname, "main.py"), []byte(source), 0644); err != nil {
@@ -389,7 +436,7 @@ func python27_common_handler(w http.ResponseWriter, r *http.Request, decoder *js
 	passcount := 0
 	for n, test := range request.Tests {
 		// run it with the reference solution
-		ref, err := request.RunTest(test, request.Reference, isModule)
+		ref, err := request.RunReferenceTest(test, request.Reference, isModule)
 		if err != nil {
 			log.Printf("Error running reference solution %d: %v", n, err)
 			http.Error(w, fmt.Sprintf("Error running reference solution %d: %v", n, err), http.StatusInternalServerError)
@@ -447,7 +494,7 @@ func python27_common_handler(w http.ResponseWriter, r *http.Request, decoder *js
 	}
 	for n, test := range request.HiddenTests {
 		// run it with the reference solution
-		ref, err := request.RunTest(test, request.Reference, isModule)
+		ref, err := request.RunReferenceTest(test, request.Reference, isModule)
 		if err != nil {
 			log.Printf("Error running reference solution on hidden %d: %v", n, err)
 			http.Error(w, fmt.Sprintf("Error running reference solution on hidden %d: %v", n, err), http.StatusInternalServerError)
@@ -463,9 +510,7 @@ func python27_common_handler(w http.ResponseWriter, r *http.Request, decoder *js
 		}
 
 		// report the result
-		if n > 0 {
-			response.Report += "\n-=-=-=-=-=-=-=-=-\n\n"
-		}
+		response.Report += "\n-=-=-=-=-=-=-=-=-\n\n"
 
 		// record a pass or fail
 		if ref.Error || cand.Error || ref.Stdout != cand.Stdout {
@@ -484,11 +529,7 @@ func python27_common_handler(w http.ResponseWriter, r *http.Request, decoder *js
 			response.Report += fmt.Sprintf("The candidate solution ended in error: %s\n", cand.Message)
 		}
 		if !ref.Error && !cand.Error && ref.Stdout != cand.Stdout {
-			response.Report += fmt.Sprintf("The output was incorrect.\n\n"+
-				"The correct output is:\n<<<<\n%s>>>>\n\n"+
-				"Your output was:\n<<<<\n%s>>>>\n",
-				ref.Stdout,
-				cand.Stdout)
+			response.Report += "The output was incorrect.\n"
 		}
 	}
 	tests := len(request.Tests) + len(request.HiddenTests)
@@ -497,6 +538,58 @@ func python27_common_handler(w http.ResponseWriter, r *http.Request, decoder *js
 	} else {
 		log.Printf("  passed %d/%d tests", passcount, tests)
 	}
+
+	writeJson(w, r, response)
+}
+
+func python27module_output_handler(w http.ResponseWriter, r *http.Request, decoder *json.Decoder) {
+	python27_common_output_handler(w, r, decoder, true)
+}
+
+func python27stdin_output_handler(w http.ResponseWriter, r *http.Request, decoder *json.Decoder) {
+	python27_common_output_handler(w, r, decoder, false)
+}
+
+func python27_common_output_handler(w http.ResponseWriter, r *http.Request, decoder *json.Decoder, isModule bool) {
+	request := new(Python27CommonRequest)
+	if err := decoder.Decode(request); err != nil {
+		log.Printf("Error decoding input: %v", err)
+		http.Error(w, fmt.Sprintf("Error decoding input: %v", err), http.StatusBadRequest)
+		return
+	}
+	if err := request.Validate(); err != nil {
+		log.Printf("Error validating input: %v", err)
+		http.Error(w, fmt.Sprintf("Error validating input: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	results := []string{}
+
+	for n, test := range request.Tests {
+		// run it with the reference solution
+		ref, err := request.RunReferenceTest(test, request.Reference, isModule)
+		if err != nil {
+			log.Printf("Error running reference solution %d: %v", n, err)
+			http.Error(w, fmt.Sprintf("Error running reference solution %d: %v", n, err), http.StatusInternalServerError)
+			return
+		}
+
+		// give a few details
+		if ref.Error {
+			msg := fmt.Sprintf("The reference solution ended in error: %s\n", ref.Message)
+			if ref.Stdout != "" {
+				msg += fmt.Sprintf("Standard output before it quit:\n<<<<\n%s>>>>\n\n", ref.Stdout)
+			}
+			if ref.Stderr != "" {
+				msg += fmt.Sprintf("Standard error reported:\n<<<<\n%s>>>>\n\n", ref.Stderr)
+			}
+			results = append(results, msg)
+		} else {
+			results = append(results, ref.Stdout)
+		}
+	}
+
+	response := map[string][]string{"Output": results}
 
 	writeJson(w, r, response)
 }
