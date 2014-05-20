@@ -7,7 +7,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -48,8 +47,8 @@ type TestResult struct {
 const (
 	DefaultAddress       = ":8081"
 	CompressionThreshold = 1024
-	Python27Name         = "bin/python2.7-static"
-	SandboxName          = "bin/sandbox"
+	Python27Name         = "/usr/local/bin/python2.7-static"
+	SandboxName          = "/usr/local/bin/sandbox"
 	LogFileName          = "/var/log/sandbox/sandboxservice.log"
 	MaxMB                = 256
 	MaxSeconds           = 60
@@ -76,12 +75,8 @@ func main() {
 	defer logfile.Close()
 	log.SetOutput(logfile)
 
-	wd, err := os.Getwd()
-	if err != nil {
-		log.Fatalf("Failed to find working directory: %v", err)
-	}
-	Python27Path = filepath.Join(wd, Python27Name)
-	SandboxPath = filepath.Join(wd, SandboxName)
+	Python27Path = Python27Name
+	SandboxPath = SandboxName
 
 	http.Handle("/grade/python27stdin", jsonHandler(python27stdin_handler))
 	http.Handle("/grade/python27module", jsonHandler(python27module_handler))
